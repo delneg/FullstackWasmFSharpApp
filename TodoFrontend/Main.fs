@@ -115,7 +115,7 @@ module TodoList =
         {
             EndPoint : EndPoint
             NewTask : string
-            Entries : list<Entry.Model>
+            Entries : Entry.Model array
             NextKey : Entry.Key
         }
 
@@ -123,7 +123,7 @@ module TodoList =
             {
                 EndPoint = All
                 NewTask = ""
-                Entries = []
+                Entries = [||]
                 NextKey = 0
             }
 
@@ -145,16 +145,16 @@ module TodoList =
         | AddEntry ->
             { model with
                 NewTask = ""
-                Entries = model.Entries @ [Entry.New model.NextKey model.NewTask]
+                Entries = Array.append model.Entries [|Entry.New model.NextKey model.NewTask|]
                 NextKey = model.NextKey + 1 }
         | ClearCompleted ->
-            { model with Entries = List.filter (fun e -> not e.IsCompleted) model.Entries }
+            { model with Entries = Array.filter (fun e -> not e.IsCompleted) model.Entries }
         | SetAllCompleted c ->
-            { model with Entries = List.map (fun e -> { e with IsCompleted = c }) model.Entries }
+            { model with Entries = Array.map (fun e -> { e with IsCompleted = c }) model.Entries }
         | EntryMessage (key, msg) ->
             let updateEntry (e: Entry.Model) =
                 if e.Id = key then Entry.Update msg e else Some e
-            { model with Entries = List.choose updateEntry model.Entries }
+            { model with Entries = Array.choose updateEntry model.Entries }
         | SetEndPoint ep ->
             { model with EndPoint = ep }
 
@@ -162,10 +162,10 @@ module TodoList =
     let Render (state: Model) (dispatch: Dispatch<Message>) =
         let countNotCompleted =
             state.Entries
-            |> List.filter (fun e -> not e.IsCompleted)
-            |> List.length
+            |> Array.filter (fun e -> not e.IsCompleted)
+            |> Array.length
         MasterTemplate()
-            .HiddenIfNoEntries(if List.isEmpty state.Entries then "hidden" else "")
+            .HiddenIfNoEntries(if Array.isEmpty state.Entries then "hidden" else "")
             .Entries(concat {
                 for entry in state.Entries do
                     let entryDispatch msg = dispatch (EntryMessage (entry.Id, msg))
