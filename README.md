@@ -21,8 +21,9 @@ Command to install it from their website is `curl https://wasmtime.dev/install.s
 Then:
 
 ```bash
-dotnet build
-wasmtime bin/Debug/net7.0/ExampleFsharpWasiApp.wasm --tcplisten localhost:8080 --env ASPNETCORE_URLS=http://localhost:8080
+cd TodoBackend
+dotnet build 
+wasmtime bin/Debug/net7.0/FullstackWasmFSharpAppBackend.wasm --tcplisten localhost:8080 --env ASPNETCORE_URLS=http://localhost:8080
 > info: Microsoft.Hosting.Lifetime
 >       Now listening on: http://localhost:8080
 ```
