@@ -1,4 +1,5 @@
 ﻿open System
+open System.Collections
 open Microsoft.AspNetCore
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Hosting
@@ -12,43 +13,73 @@ open Giraffe.EndpointRouting
 open System
 open Microsoft.AspNetCore.Builder
 open Microsoft.Extensions.Hosting
+type Todo =
+  { Id: string
+    Text: string
+    Done: bool
+  }
+  
+type TodoSave = Todo -> Todo
 
-let handler1 : HttpHandler =
-    fun (_ : HttpFunc) (ctx : HttpContext) ->
-        ctx.WriteTextAsync "Hello World"
+type TodoCriteria =
+  | All
 
-let handler2 (firstName : string, age : int) : HttpHandler =
-    fun (_ : HttpFunc) (ctx : HttpContext) ->
-        sprintf "Hello %s, you are %i years old." firstName age
-        |> ctx.WriteTextAsync
+type TodoFind = TodoCriteria -> Todo[]
 
-let handler3 (a : string, b : string, c : string, d : int) : HttpHandler =
-    fun (_ : HttpFunc) (ctx : HttpContext) ->
-        sprintf "Hello %s %s %s %i" a b c d
-        |> ctx.WriteTextAsync
+module TodoInMemory = 
+    let find (inMemory : Hashtable) (criteria : TodoCriteria) : Todo[] =
+      match criteria with
+      | All -> inMemory.Values |> Seq.cast |> Array.ofSeq
+      
+    let save (inMemory : Hashtable) (todo : Todo) : Todo =
+      inMemory.Add(todo.Id, todo)
+      todo
+      
+
+type IServiceCollection with
+  member this.AddTodoInMemory (inMemory : Hashtable) =
+    this.AddSingleton<TodoFind>(TodoInMemory.find inMemory) |> ignore
+    this.AddSingleton<TodoSave>(TodoInMemory.save inMemory) |> ignore
+  
+module TodoHttp =
+    let getAllTodos: HttpHandler =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+          let find = ctx.GetService<TodoFind>()
+          let todos = find TodoCriteria.All
+          json todos next ctx
+    
+    let createNewTodo: HttpHandler =
+         fun (next: HttpFunc) (ctx: HttpContext) ->
+          task {
+            let save = ctx.GetService<TodoSave>()
+            let! todo = ctx.BindJsonAsync<Todo>()
+            let todo = { todo with Id = ShortGuid.fromGuid(Guid.NewGuid()) }
+            return! json (save todo) next ctx
+          }
+          
+    let updateTodo id =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+            text ("Update " + id) next ctx
+            
+    let deleteTodo id =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+            text ("Delete " + id) next ctx
+    let handlers =
+        [ GET [ route "/" getAllTodos ]
+          POST [ route "/" createNewTodo ]
+          PUT [ routef "/%s" updateTodo ]
+          DELETE [ routef "/%s" deleteTodo ]
+        ]
+
+    
 
 let endpoints =
-    [
-        subRoute "/foo" [
-            GET [
-                route "/bar" (text "Aloha!")
-            ]
-        ]
-        GET [
-            route  "/" (text "Hello World")
-            routef "/%s/%i" handler2
-            routef "/%s/%s/%s/%i" handler3
-        ]
-        GET_HEAD [
-            route "/foo" (text "Bar")
-            route "/x"   (text "y")
-            route "/abc" (text "def")
-        ]
-        // Not specifying a http verb means it will listen to all verbs
-        subRoute "/sub" [
-            route "/test" handler1
-        ]
-    ]
+    [ subRoute "/todos" TodoHttp.handlers
+      subRoute "/foo" [ GET [ route "/bar" (text "Aloha!") ] ]
+      GET [ route "/" (text "Hello World") ]
+
+      ]
+
 
 let notFoundHandler =
     "Not Found"
@@ -62,10 +93,13 @@ let configureApp (appBuilder : IApplicationBuilder) =
         .UseGiraffe(notFoundHandler)
 
 let configureServices (services : IServiceCollection) =
+    let inMemory = Hashtable()
     services
         .AddRouting()
         .AddGiraffe()
-    |> ignore
+        .AddTodoInMemory(Hashtable())
+    services.AddSingleton<TodoFind>(TodoInMemory.find inMemory) |> ignore
+    services.AddSingleton<TodoSave>(TodoInMemory.save inMemory) |> ignore
 
 //
 [<EntryPoint>]
