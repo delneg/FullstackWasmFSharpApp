@@ -8,144 +8,199 @@ open Elmish
 open Bolero
 open Bolero.Html
 
-/// Routing endpoints definition.
-type Page =
-    | [<EndPoint "/">] Home
-    | [<EndPoint "/counter">] Counter
-    | [<EndPoint "/data">] Data
+/// Parses the template.html file and provides types to fill it with dynamic content.
+type MasterTemplate = Template<"template.html">
 
-/// The Elmish application's model.
-type Model =
-    {
-        page: Page
-        counter: int
-        books: Book[] option
-        error: string option
-    }
+/// Our application has three URL endpoints.
+type EndPoint =
+    | [<EndPoint "/">] All
+    | [<EndPoint "/active">] Active
+    | [<EndPoint "/completed">] Completed
 
-and Book =
-    {
-        title: string
-        author: string
-        publishDate: DateTime
-        isbn: string
-    }
+/// This module defines the model, the update and the view for a single entry.
+module Entry =
 
-let initModel =
-    {
-        page = Home
-        counter = 0
-        books = None
-        error = None
-    }
+    /// The unique identifier of a Todo entry.
+    type Key = int
 
+    /// The model for a Todo entry.
+    type Model =
+        {
+            Id : Key
+            Task : string
+            IsCompleted : bool
+            Editing : option<string>
+        }
 
-/// The Elmish application's update messages.
-type Message =
-    | SetPage of Page
-    | Increment
-    | Decrement
-    | SetCounter of int
-    | GetBooks
-    | GotBooks of Book[]
-    | Error of exn
-    | ClearError
+    let New (key: Key) (task: string) =
+        {
+            Id = key
+            Task = task
+            IsCompleted = false
+            Editing = None
+        }
 
-let update (http: HttpClient) message model =
-    match message with
-    | SetPage page ->
-        { model with page = page }, Cmd.none
+    type Message =
+        | Remove
+        | StartEdit
+        | Edit of text: string
+        | CommitEdit
+        | CancelEdit
+        | SetCompleted of completed: bool
 
-    | Increment ->
-        { model with counter = model.counter + 1 }, Cmd.none
-    | Decrement ->
-        { model with counter = model.counter - 1 }, Cmd.none
-    | SetCounter value ->
-        { model with counter = value }, Cmd.none
+    /// Defines how a given Todo entry is updated based on a message.
+    /// Returns Some to update the entry, or None to delete it.
+    let Update (msg: Message) (e: Model) : option<Model> =
+        match msg with
+        | Remove ->
+            None
+        | StartEdit ->
+            Some { e with Editing = Some e.Task }
+        | Edit value ->
+            Some { e with Editing = e.Editing |> Option.map (fun _ -> value) }
+        | CommitEdit ->
+            Some { e with
+                    Task = e.Editing |> Option.defaultValue e.Task
+                    Editing = None }
+        | CancelEdit ->
+            Some { e with Editing = None }
+        | SetCompleted value ->
+            Some { e with IsCompleted = value }
 
-    | GetBooks ->
-        let getBooks() = http.GetFromJsonAsync<Book[]>("/books.json")
-        let cmd = Cmd.OfTask.either getBooks () GotBooks Error
-        { model with books = None }, cmd
-    | GotBooks books ->
-        { model with books = Some books }, Cmd.none
+    /// Render a given Todo entry.
+    let Render (endpoint, entry) dispatch =
+        MasterTemplate.Entry()
+            .Label(text entry.Task)
+            .CssAttrs(
+                attr.``class`` (String.concat " " [
+                    if entry.IsCompleted then "completed"
+                    if entry.Editing.IsSome then "editing"
+                    match endpoint, entry.IsCompleted with
+                    | EndPoint.Completed, false
+                    | EndPoint.Active, true -> "hidden"
+                    | _ -> ()
+                ])
+            )
+            .EditingTask(
+                entry.Editing |> Option.defaultValue "",
+                fun text -> dispatch (Message.Edit text)
+            )
+            .EditBlur(fun _ -> dispatch Message.CommitEdit)
+            .EditKeyup(fun e ->
+                match e.Key with
+                | "Enter" -> dispatch Message.CommitEdit
+                | "Escape" -> dispatch Message.CancelEdit
+                | _ -> ()
+            )
+            .IsCompleted(
+                entry.IsCompleted,
+                fun x -> dispatch (Message.SetCompleted x)
+            )
+            .Remove(fun _ -> dispatch Message.Remove)
+            .StartEdit(fun _ -> dispatch Message.StartEdit)
+            .Elt()
 
-    | Error exn ->
-        { model with error = Some exn.Message }, Cmd.none
-    | ClearError ->
-        { model with error = None }, Cmd.none
+    type Component() =
+        inherit ElmishComponent<EndPoint * Model, Message>()
 
-/// Connects the routing system to the Elmish application.
-let router = Router.infer SetPage (fun model -> model.page)
+        override this.ShouldRender(oldModel, newModel) = oldModel <> newModel
 
-type Main = Template<"wwwroot/main.html">
+        override this.View model dispatch = Render model dispatch
 
-let homePage model dispatch =
-    Main.Home().Elt()
+/// This module defines the model, the update and the view for a full todo list.
+module TodoList =    
 
-let counterPage model dispatch =
-    Main.Counter()
-        .Decrement(fun _ -> dispatch Decrement)
-        .Increment(fun _ -> dispatch Increment)
-        .Value(model.counter, fun v -> dispatch (SetCounter v))
-        .Elt()
+    /// The model for the full TodoList application.
+    type Model =
+        {
+            EndPoint : EndPoint
+            NewTask : string
+            Entries : list<Entry.Model>
+            NextKey : Entry.Key
+        }
 
-let dataPage model dispatch =
-    Main.Data()
-        .Reload(fun _ -> dispatch GetBooks)
-        .Rows(cond model.books <| function
-            | None ->
-                Main.EmptyData().Elt()
-            | Some books ->
-                forEach books <| fun book ->
-                    tr {
-                        td { book.title }
-                        td { book.author }
-                        td { book.publishDate.ToString("yyyy-MM-dd") }
-                        td { book.isbn }
-                    })
-        .Elt()
+        static member Empty =
+            {
+                EndPoint = All
+                NewTask = ""
+                Entries = []
+                NextKey = 0
+            }
 
+    type Message =
+        | EditNewTask of text: string
+        | AddEntry
+        | ClearCompleted
+        | SetAllCompleted of completed: bool
+        | EntryMessage of key: Entry.Key * message: Entry.Message
+        | SetEndPoint of EndPoint
 
-let menuItem (model: Model) (page: Page) (text: string) =
-    Main.MenuItem()
-        .Active(if model.page = page then "is-active" else "")
-        .Url(router.Link page)
-        .Text(text)
-        .Elt()
+    let Router = Router.infer SetEndPoint (fun m -> m.EndPoint)
 
-let view model dispatch =
-    Main()
-        .Menu(concat {
-            menuItem model Home "Home"
-            menuItem model Counter "Counter"
-            menuItem model Data "Download data"
-        })
-        .Body(
-            cond model.page <| function
-            | Home -> homePage model dispatch
-            | Counter -> counterPage model dispatch
-            | Data ->
-                dataPage model dispatch
-        )
-        .Error(
-            cond model.error <| function
-            | None -> empty()
-            | Some err ->
-                Main.ErrorNotification()
-                    .Text(err)
-                    .Hide(fun _ -> dispatch ClearError)
-                    .Elt()
-        )
-        .Elt()
+    /// Defines how the Todo list is updated based on a message.
+    let Update  (http: HttpClient) (msg: Message) (model: Model) =
+        match msg with
+        | EditNewTask value ->
+            { model with NewTask = value }
+        | AddEntry ->
+            { model with
+                NewTask = ""
+                Entries = model.Entries @ [Entry.New model.NextKey model.NewTask]
+                NextKey = model.NextKey + 1 }
+        | ClearCompleted ->
+            { model with Entries = List.filter (fun e -> not e.IsCompleted) model.Entries }
+        | SetAllCompleted c ->
+            { model with Entries = List.map (fun e -> { e with IsCompleted = c }) model.Entries }
+        | EntryMessage (key, msg) ->
+            let updateEntry (e: Entry.Model) =
+                if e.Id = key then Entry.Update msg e else Some e
+            { model with Entries = List.choose updateEntry model.Entries }
+        | SetEndPoint ep ->
+            { model with EndPoint = ep }
 
-type MyApp() =
-    inherit ProgramComponent<Model, Message>()
+    /// Render the whole application.
+    let Render (state: Model) (dispatch: Dispatch<Message>) =
+        let countNotCompleted =
+            state.Entries
+            |> List.filter (fun e -> not e.IsCompleted)
+            |> List.length
+        MasterTemplate()
+            .HiddenIfNoEntries(if List.isEmpty state.Entries then "hidden" else "")
+            .Entries(concat {
+                for entry in state.Entries do
+                    let entryDispatch msg = dispatch (EntryMessage (entry.Id, msg))
+                    ecomp<Entry.Component,_,_> (state.EndPoint, entry) entryDispatch
+            })
+            .ClearCompleted(fun _ -> dispatch Message.ClearCompleted)
+            .IsCompleted(
+                (countNotCompleted = 0),
+                fun c -> dispatch (Message.SetAllCompleted c)
+            )
+            .Task(
+                state.NewTask,
+                fun text -> dispatch (Message.EditNewTask text)
+            )
+            .Edit(fun e ->
+                if e.Key = "Enter" && state.NewTask <> "" then
+                    dispatch Message.AddEntry
+            )
+            .ItemsLeft(
+                match countNotCompleted with
+                | 1 -> "1 item left"
+                | n -> string n + " items left"
+            )
+            .CssFilterAll(attr.``class`` (if state.EndPoint = EndPoint.All then "selected" else null))
+            .CssFilterActive(attr.``class`` (if state.EndPoint = EndPoint.Active then "selected" else null))
+            .CssFilterCompleted(attr.``class`` (if state.EndPoint = EndPoint.Completed then "selected" else null))
+            .Elt()
 
-    [<Inject>]
-    member val HttpClient = Unchecked.defaultof<HttpClient> with get, set
+    /// The entry point of our application, called on page load (see Startup.fs).
+    type Component() =
+        inherit ProgramComponent<Model, Message>()
+        [<Inject>]
+        member val HttpClient = Unchecked.defaultof<HttpClient> with get, set
 
-    override this.Program =
-        let update = update this.HttpClient
-        Program.mkProgram (fun _ -> initModel, Cmd.ofMsg GetBooks) update view
-        |> Program.withRouter router
+        override this.Program =
+            let update = Update this.HttpClient
+            Program.mkSimple (fun _ -> Model.Empty) update Render
+            |> Program.withRouter Router
