@@ -22,11 +22,10 @@ Then:
 
 ```bash
 dotnet build
-wasmer bin/Debug/net7.0/ExampleFsharpWasiApp.wasm
-> Hello from F#
+wasmtime bin/Debug/net7.0/ExampleFsharpWasiApp.wasm --tcplisten localhost:8080 --env ASPNETCORE_URLS=http://localhost:8080
+> info: Microsoft.Hosting.Lifetime
+>       Now listening on: http://localhost:8080
 ```
-
-
 
 
 #### License
