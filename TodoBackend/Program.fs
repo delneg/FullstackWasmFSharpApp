@@ -101,7 +101,7 @@ let configureServices (services : IServiceCollection) =
     services.AddSingleton<TodoFind>(TodoInMemory.find inMemory) |> ignore
     services.AddSingleton<TodoSave>(TodoInMemory.save inMemory) |> ignore
 
-//
+
 [<EntryPoint>]
 let main args =
     let builder = WebApplication.CreateBuilder(args).UseWasiConnectionListener()

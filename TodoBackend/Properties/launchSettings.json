@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "ExampleFsharpWasiApp": {
+    "FullstackWasmFSharpAppBackend": {
       "commandName": "Project",
       "dotnetRunMessages": true,
       "launchBrowser": false,
