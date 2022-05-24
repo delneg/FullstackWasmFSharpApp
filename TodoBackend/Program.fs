@@ -1,19 +1,10 @@
-﻿open System
-open System.Collections
-open Microsoft.AspNetCore
+﻿open System.Collections
 open Microsoft.AspNetCore.Builder
-open Microsoft.AspNetCore.Hosting
 open Microsoft.AspNetCore.Http
-open Microsoft.AspNetCore.Server.Kestrel.Core
-open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.Extensions.Hosting
 open Giraffe
 open Giraffe.EndpointRouting
-open System
-open Microsoft.AspNetCore.Builder
-open Microsoft.Extensions.Hosting
-open Microsoft.AspNetCore.Cors
 
 type Key = int
 type Todo =
@@ -29,6 +20,8 @@ type TodoCriteria =
   | Single of Key
 
 type TodoFind = TodoCriteria -> Todo[]
+type TodoDelete = Key -> Todo option
+type TodoUpdate = Todo -> Todo option
 
 module TodoInMemory = 
     let find (inMemory : Hashtable) (criteria : TodoCriteria) : Todo[] =
@@ -38,12 +31,28 @@ module TodoInMemory =
     let save (inMemory : Hashtable) (todo : Todo) : Todo =
       inMemory.Add(todo.Id, todo)
       todo
-      
+    
+    let delete (inMemory: Hashtable) (key: Key) : Todo option =
+      if inMemory.ContainsKey key then
+          let todo = inMemory.Item key :?> Todo
+          inMemory.Remove key
+          Some todo
+      else None
+    
+    let update (inMemory: Hashtable) (todo: Todo) : Todo option =
+      if inMemory.ContainsKey todo.Id then
+          inMemory[todo.Id] <- todo
+          Some todo
+      else
+          None
+    
 
 type IServiceCollection with
   member this.AddTodoInMemory (inMemory : Hashtable) =
     this.AddSingleton<TodoFind>(TodoInMemory.find inMemory) |> ignore
     this.AddSingleton<TodoSave>(TodoInMemory.save inMemory) |> ignore
+    this.AddSingleton<TodoDelete>(TodoInMemory.delete inMemory) |> ignore
+    this.AddSingleton<TodoUpdate>(TodoInMemory.update inMemory) |> ignore
   
 module TodoHttp =
     let getAllTodos: HttpHandler =
@@ -57,25 +66,37 @@ module TodoHttp =
           task {
             let save = ctx.GetService<TodoSave>()
             let! todo = ctx.BindJsonAsync<Todo>()
-//            let todo = { todo with Id = ShortGuid.fromGuid(Guid.NewGuid()) }
             return! json (save todo) next ctx
           }
           
-    let updateTodo id =
+    let updateTodo =
         fun (next: HttpFunc) (ctx: HttpContext) ->
-            text ("Update " + id) next ctx
+            task {
+                let upd = ctx.GetService<TodoUpdate>()
+                let! todo = ctx.BindJsonAsync<Todo>()
+                match upd todo with
+                | Some todo -> return! json todo next ctx
+                | None ->
+                    return! RequestErrors.NOT_FOUND "Not found" next ctx 
+            }
             
-    let deleteTodo id =
-        fun (next: HttpFunc) (ctx: HttpContext) ->
-            text ("Delete " + id) next ctx
+    let deleteTodo =
+        fun (id: int) (next: HttpFunc) (ctx: HttpContext) ->
+            task {
+                let del = ctx.GetService<TodoDelete>()
+                match del id with
+                | Some todo -> return! json todo next ctx
+                | None ->
+                    return! RequestErrors.NOT_FOUND "Not found" next ctx 
+            }
             
     let handlers =
         [ 
           //OPTIONS [route "/" (text "ok" )]
           GET [ route "/" getAllTodos ]
           POST [ route "/" createNewTodo ]
-          PUT [ routef "/%s" updateTodo ]
-          DELETE [ routef "/%s" deleteTodo ]
+          PUT [ route "/" updateTodo ]
+          DELETE [ routef "/%i" deleteTodo ]
         ]
 
     
@@ -111,6 +132,8 @@ let configureServices (services : IServiceCollection) =
         .AddTodoInMemory(Hashtable())
     services.AddSingleton<TodoFind>(TodoInMemory.find inMemory) |> ignore
     services.AddSingleton<TodoSave>(TodoInMemory.save inMemory) |> ignore
+    services.AddSingleton<TodoUpdate>(TodoInMemory.update inMemory) |> ignore
+    services.AddSingleton<TodoDelete>(TodoInMemory.delete inMemory) |> ignore
     services.AddCors() |> ignore
 
 

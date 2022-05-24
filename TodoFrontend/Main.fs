@@ -137,6 +137,7 @@ module TodoList =
         | AddEntry
         | EntryAdded of Entry.Model
         | EntryDeleted of Entry.Key
+        | EntryUpdated of Entry.Model
         | ClearCompleted
         | SetAllCompleted of completed: bool
         | EntryMessage of key: Entry.Key * message: Entry.Message
@@ -167,7 +168,6 @@ module TodoList =
             { model with
                 NewTask = ""
                 Entries = model.Entries
-//                Entries = Array.append model.Entries [|newEntry|]
                 NextKey = model.NextKey + 1 }, cmd
         | EntryAdded entry ->
             {model with Entries = Array.append model.Entries [|entry|]}, Cmd.none
@@ -176,14 +176,34 @@ module TodoList =
         | SetAllCompleted c ->
             { model with Entries = Array.map (fun e -> { e with IsCompleted = c }) model.Entries }, Cmd.none
         | EntryMessage (key, msg) ->
-            let updateEntry (e: Entry.Model) =
-                if e.Id = key then Entry.Update msg e else Some e
-//            match updateEntry with
-//            | None -> ()
-//            | Some e -> 
-            { model with Entries = Array.choose updateEntry model.Entries }, Cmd.none
+            let updated = model.Entries
+                          |> Array.tryFind (fun (x: Entry.Model) -> x.Id = key) 
+                          |> Option.bind (Entry.Update msg)
+            match updated with
+            | None ->
+                let deleteEntry () =
+                    task {
+                        let! res = http.DeleteAsync($"/todos/{key}")
+                        let! deser = res.Content.ReadFromJsonAsync<Entry.Model>()
+                        return deser.Id
+                    }
+                let cmd = Cmd.OfTask.either deleteEntry () EntryDeleted Error
+                model, cmd
+            | Some e ->
+                let updateEntry () =
+                    task {
+                        let! res = http.PutAsJsonAsync("/todos", e)
+                        let! cont = res.Content.ReadAsStringAsync()
+                        Console.WriteLine(cont)
+                        return! res.Content.ReadFromJsonAsync<Entry.Model>()
+                    }
+                let cmd = Cmd.OfTask.either updateEntry () EntryUpdated Error
+                model, cmd
         | EntryDeleted key ->
-            model, Cmd.none
+            {model with Entries = Array.filter (fun x -> x.Id <> key) model.Entries}, Cmd.none
+        | EntryUpdated entry ->
+            let newEntries = Array.map (fun (x: Entry.Model) -> if x.Id = entry.Id then entry else x) model.Entries
+            { model with Entries = newEntries}, Cmd.none
         | SetEndPoint ep ->
             { model with EndPoint = ep }, Cmd.none
         | Error exn ->
