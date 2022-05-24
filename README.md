@@ -18,7 +18,9 @@ written by http://twitter.com/filip_woj for tips on running it on macOS
 ## Running Backend
 
 Ensure you have at least .NET 7.0 preview 3 - you can download it here https://dotnet.microsoft.com/en-us/download/dotnet/7.0
+
 Also, please install `wasmtime` - https://wasmtime.dev/
+
 Command to install it from their website is `curl https://wasmtime.dev/install.sh -sSf | bash` - be sure to check the script first (always check what you `sh` from the internet)
 
 
@@ -35,19 +37,25 @@ wasmtime bin/Debug/net7.0/FullstackWasmFSharpAppBackend.wasm --tcplisten localho
 ## Running frontend
 
 Please note, that currently the backend has hard-coded address of "localhost:5000" for CORS to work.
+
 Also, the frontend has hard-coded address of the backend to "http://localhost:8080" for simplicity.
+
 That said, you should be able to run interactive (with .NET Interpreter in WASM) frontend using:
+
 ```bash
 cd TodoFrontend
 dotnet run
 ```
 
 You can build the portable (i.e. AOT and optimized) version of the frontend which can be deployed as static website with:
+
 ```bash
 cd TodoFrontend
 dotnet publish -o $(pwd)/publish/ -r Portable
 ```
+
 After that, you can serve it like any other SPA - for example, locally using [Serve](https://github.com/vercel/serve)
+
 
 ```bash
 serve publish/wwwroot/ -p 5000
