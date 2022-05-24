@@ -193,8 +193,8 @@ module TodoList =
                 let updateEntry () =
                     task {
                         let! res = http.PutAsJsonAsync("/todos", e)
-                        let! cont = res.Content.ReadAsStringAsync()
-                        Console.WriteLine(cont)
+//                        let! cont = res.Content.ReadAsStringAsync()
+//                        Console.WriteLine(cont)
                         return! res.Content.ReadFromJsonAsync<Entry.Model>()
                     }
                 let cmd = Cmd.OfTask.either updateEntry () EntryUpdated Error
@@ -223,11 +223,11 @@ module TodoList =
                     let entryDispatch msg = dispatch (EntryMessage (entry.Id, msg))
                     ecomp<Entry.Component,_,_> (state.EndPoint, entry) entryDispatch
             })
-            .ClearCompleted(fun _ -> dispatch Message.ClearCompleted)
-            .IsCompleted(
-                (countNotCompleted = 0),
-                fun c -> dispatch (Message.SetAllCompleted c)
-            )
+//            .ClearCompleted(fun _ -> dispatch Message.ClearCompleted)
+//            .IsCompleted(
+//                (countNotCompleted = 0),
+//                fun c -> dispatch (Message.SetAllCompleted c)
+//            )
             .Task(
                 state.NewTask,
                 fun text -> dispatch (Message.EditNewTask text)

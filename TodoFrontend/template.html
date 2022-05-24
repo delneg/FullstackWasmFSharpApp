@@ -3,8 +3,8 @@
     <input bind="${Task}" onkeyup="${Edit}" class="new-todo" placeholder="What needs to be done?" autofocus>
 </header>
 <section class="main ${HiddenIfNoEntries}">
-    <input bind="${IsCompleted}" id="toggle-all" class="toggle-all" type="checkbox">
-    <label for="toggle-all">Mark all as complete</label>
+<!--    <input bind="${IsCompleted}" id="toggle-all" class="toggle-all" type="checkbox">-->
+<!--    <label for="toggle-all">Mark all as complete</label>-->
     <ul class="todo-list">
         ${Entries}
         <template id="Entry">
@@ -32,5 +32,5 @@
             <a attr="${CssFilterCompleted}" href="completed">Completed</a>
         </li>
     </ul>
-    <button onclick="${ClearCompleted}" class="clear-completed">Clear completed</button>
+<!--    <button onclick="${ClearCompleted}" class="clear-completed">Clear completed</button>-->
 </footer>
