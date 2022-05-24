@@ -10,6 +10,10 @@ written by http://twitter.com/filip_woj for tips on running it on macOS
 
 (although I'm still getting `System.PlatformNotSupportedException: System.Net.Quic is not supported on this platform.`)
 
+## Preview
+
+![png](https://github.com/delneg/FullstackWasmFSharpApp/blob/master/assets/screenshot.png?raw=true)
+
 
 ## Running Backend
 
