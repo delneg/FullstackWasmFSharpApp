@@ -8,6 +8,7 @@ open Elmish
 open Bolero
 open Bolero.Html
 
+
 /// Parses the template.html file and provides types to fill it with dynamic content.
 type MasterTemplate = Template<"template.html">
 
@@ -117,6 +118,7 @@ module TodoList =
             NewTask : string
             Entries : Entry.Model array
             NextKey : Entry.Key
+            error: string option
         }
 
         static member Empty =
@@ -125,15 +127,18 @@ module TodoList =
                 NewTask = ""
                 Entries = [||]
                 NextKey = 0
+                error = None
             }
 
     type Message =
         | EditNewTask of text: string
         | AddEntry
+        | EntryAdded of Entry.Model
         | ClearCompleted
         | SetAllCompleted of completed: bool
         | EntryMessage of key: Entry.Key * message: Entry.Message
         | SetEndPoint of EndPoint
+        | Error of exn
 
     let Router = Router.infer SetEndPoint (fun m -> m.EndPoint)
 
@@ -141,22 +146,35 @@ module TodoList =
     let Update  (http: HttpClient) (msg: Message) (model: Model) =
         match msg with
         | EditNewTask value ->
-            { model with NewTask = value }
+            { model with NewTask = value }, Cmd.none
         | AddEntry ->
+            let newEntry = Entry.New model.NextKey model.NewTask
+            let saveEntry() =
+                task {
+                    let! res = http.PostAsJsonAsync("/todos",newEntry)
+                    return! res.Content.ReadFromJsonAsync<Entry.Model>()
+                }
+            let cmd = Cmd.OfTask.either saveEntry () EntryAdded Error
             { model with
                 NewTask = ""
-                Entries = Array.append model.Entries [|Entry.New model.NextKey model.NewTask|]
-                NextKey = model.NextKey + 1 }
+                Entries = model.Entries
+//                Entries = Array.append model.Entries [|newEntry|]
+                NextKey = model.NextKey + 1 }, cmd
+        | EntryAdded entry ->
+            {model with Entries = Array.append model.Entries [|entry|]}, Cmd.none
         | ClearCompleted ->
-            { model with Entries = Array.filter (fun e -> not e.IsCompleted) model.Entries }
+            { model with Entries = Array.filter (fun e -> not e.IsCompleted) model.Entries }, Cmd.none
         | SetAllCompleted c ->
-            { model with Entries = Array.map (fun e -> { e with IsCompleted = c }) model.Entries }
+            { model with Entries = Array.map (fun e -> { e with IsCompleted = c }) model.Entries }, Cmd.none
         | EntryMessage (key, msg) ->
             let updateEntry (e: Entry.Model) =
                 if e.Id = key then Entry.Update msg e else Some e
-            { model with Entries = Array.choose updateEntry model.Entries }
+            { model with Entries = Array.choose updateEntry model.Entries }, Cmd.none
         | SetEndPoint ep ->
-            { model with EndPoint = ep }
+            { model with EndPoint = ep }, Cmd.none
+        | Error exn ->
+            Console.WriteLine(exn.Message)
+            { model with error = Some exn.Message }, Cmd.none
 
     /// Render the whole application.
     let Render (state: Model) (dispatch: Dispatch<Message>) =
@@ -202,5 +220,5 @@ module TodoList =
 
         override this.Program =
             let update = Update this.HttpClient
-            Program.mkSimple (fun _ -> Model.Empty) update Render
+            Program.mkProgram (fun _ -> Model.Empty, Cmd.none) update Render
             |> Program.withRouter Router

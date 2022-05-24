@@ -11,7 +11,8 @@ module Program =
     let Main args =
         let builder = WebAssemblyHostBuilder.CreateDefault(args)
         builder.RootComponents.Add<Main.TodoList.Component>(".todoapp")
-        let backendUri = Uri builder.HostEnvironment.BaseAddress
+//        let backendUri = Uri builder.HostEnvironment.BaseAddress
+        let backendUri = Uri "http://localhost:8080"
         printfn $"Building with backendAddr {backendUri}"
         builder.Services.AddScoped<HttpClient>(fun _ ->
             new HttpClient(BaseAddress = backendUri)) |> ignore

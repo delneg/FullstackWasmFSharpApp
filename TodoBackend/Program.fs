@@ -13,16 +13,20 @@ open Giraffe.EndpointRouting
 open System
 open Microsoft.AspNetCore.Builder
 open Microsoft.Extensions.Hosting
+open Microsoft.AspNetCore.Cors
+
+type Key = int
 type Todo =
-  { Id: string
-    Text: string
-    Done: bool
+  { Id: Key
+    Task: string
+    IsCompleted: bool
   }
   
 type TodoSave = Todo -> Todo
 
 type TodoCriteria =
   | All
+  | Single of Key
 
 type TodoFind = TodoCriteria -> Todo[]
 
@@ -30,7 +34,7 @@ module TodoInMemory =
     let find (inMemory : Hashtable) (criteria : TodoCriteria) : Todo[] =
       match criteria with
       | All -> inMemory.Values |> Seq.cast |> Array.ofSeq
-      
+      | Single id -> if inMemory.ContainsKey id then (inMemory.Item id :?> Todo |> Array.singleton) else [||]
     let save (inMemory : Hashtable) (todo : Todo) : Todo =
       inMemory.Add(todo.Id, todo)
       todo
@@ -53,7 +57,7 @@ module TodoHttp =
           task {
             let save = ctx.GetService<TodoSave>()
             let! todo = ctx.BindJsonAsync<Todo>()
-            let todo = { todo with Id = ShortGuid.fromGuid(Guid.NewGuid()) }
+//            let todo = { todo with Id = ShortGuid.fromGuid(Guid.NewGuid()) }
             return! json (save todo) next ctx
           }
           
@@ -64,8 +68,11 @@ module TodoHttp =
     let deleteTodo id =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             text ("Delete " + id) next ctx
+            
     let handlers =
-        [ GET [ route "/" getAllTodos ]
+        [ 
+          //OPTIONS [route "/" (text "ok" )]
+          GET [ route "/" getAllTodos ]
           POST [ route "/" createNewTodo ]
           PUT [ routef "/%s" updateTodo ]
           DELETE [ routef "/%s" deleteTodo ]
@@ -87,6 +94,10 @@ let notFoundHandler =
     |> RequestErrors.notFound
 
 let configureApp (appBuilder : IApplicationBuilder) =
+    //appBuilder.UseCors(Action<_>(fun (b: Infrastructure.CorsPolicyBuilder) -> b.AllowAnyHeader() |> ignore; b.AllowAnyMethod() |> ignore)) |> ignore
+    appBuilder.UseCors(fun builder ->
+                             builder.WithOrigins("http://localhost:5000").AllowAnyMethod().AllowAnyHeader() |> ignore
+                         ) |> ignore
     appBuilder
         .UseRouting()
         .UseGiraffe(endpoints)
@@ -100,6 +111,7 @@ let configureServices (services : IServiceCollection) =
         .AddTodoInMemory(Hashtable())
     services.AddSingleton<TodoFind>(TodoInMemory.find inMemory) |> ignore
     services.AddSingleton<TodoSave>(TodoInMemory.save inMemory) |> ignore
+    services.AddCors() |> ignore
 
 
 [<EntryPoint>]
