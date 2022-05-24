@@ -8,7 +8,7 @@ Here's the introductory video from CNCF Europe WASM Conference [Bringing WebAsse
 Shoutout to https://www.strathweb.com/2022/03/running-net-7-apps-on-wasi-on-arm64-mac/
 written by http://twitter.com/filip_woj for tips on running it on macOS
 
-(although I'm still getting `System.PlatformNotSupportedException: System.Net.Quic is not supported on this platform.`)
+Upd: The issue is fixed in Wasi.Sdk > 0.1.1, https://github.com/dotnet/aspnetcore/pull/41123#issuecomment-1135884829
 
 ## Preview
 

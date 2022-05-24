@@ -12,8 +12,8 @@
 
   <ItemGroup>
     <PackageReference Include="Giraffe" Version="6.0.0" />
-    <PackageReference Include="Wasi.AspNetCore.Server.Native" Version="0.1.0" />
-    <PackageReference Include="Wasi.Sdk" Version="0.1.0" />
+    <PackageReference Include="Wasi.AspNetCore.Server.Native" Version="0.1.1" />
+    <PackageReference Include="Wasi.Sdk" Version="0.1.1" />
     <PackageReference Include="Microsoft.AspNetCore.Cors" Version="2.2.0" />
   </ItemGroup>
 </Project>
