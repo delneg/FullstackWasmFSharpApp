@@ -131,9 +131,12 @@ module TodoList =
             }
 
     type Message =
+        | GetEntries
+        | GotEntries of Entry.Model array
         | EditNewTask of text: string
         | AddEntry
         | EntryAdded of Entry.Model
+        | EntryDeleted of Entry.Key
         | ClearCompleted
         | SetAllCompleted of completed: bool
         | EntryMessage of key: Entry.Key * message: Entry.Message
@@ -145,6 +148,12 @@ module TodoList =
     /// Defines how the Todo list is updated based on a message.
     let Update  (http: HttpClient) (msg: Message) (model: Model) =
         match msg with
+        | GetEntries ->
+            let getEntries() = http.GetFromJsonAsync<Entry.Model[]>("/todos")
+            let cmd = Cmd.OfTask.either getEntries () GotEntries Error
+            { model with Entries = [||] }, cmd
+        | GotEntries entries ->
+            {model with Entries = entries |> Array.sortBy (fun x -> x.Id)}, Cmd.none
         | EditNewTask value ->
             { model with NewTask = value }, Cmd.none
         | AddEntry ->
@@ -169,7 +178,12 @@ module TodoList =
         | EntryMessage (key, msg) ->
             let updateEntry (e: Entry.Model) =
                 if e.Id = key then Entry.Update msg e else Some e
+//            match updateEntry with
+//            | None -> ()
+//            | Some e -> 
             { model with Entries = Array.choose updateEntry model.Entries }, Cmd.none
+        | EntryDeleted key ->
+            model, Cmd.none
         | SetEndPoint ep ->
             { model with EndPoint = ep }, Cmd.none
         | Error exn ->
@@ -220,5 +234,5 @@ module TodoList =
 
         override this.Program =
             let update = Update this.HttpClient
-            Program.mkProgram (fun _ -> Model.Empty, Cmd.none) update Render
+            Program.mkProgram (fun _ -> Model.Empty, Cmd.ofMsg GetEntries) update Render
             |> Program.withRouter Router
